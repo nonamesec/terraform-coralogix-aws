@@ -42,157 +42,6 @@ resource "null_resource" "s3_bucket_copy" {
   }
 }
 
-resource "aws_iam_policy" "lambda_policy" {
-  for_each = var.integration_info != null ? var.integration_info : local.integration_info
-
-  name        = "policy-for-coralogix-lambda-${random_string.this[each.key].result}"
-  description = "Policy for Lambda function ${each.value.lambda_name == null ? module.locals[each.key].function_name : each.value.lambda_name}"
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = concat(
-      # CloudWatch Logs Policy
-      [
-        {
-          Effect   = "Allow"
-          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-          Resource = ["*"]
-        }
-      ],
-
-      # Secrets Access Policy
-      each.value.store_api_key_in_secrets_manager == null || each.value.store_api_key_in_secrets_manager == true || local.api_key_is_arn ? [
-        {
-          Effect   = "Allow",
-          Action   = ["secretsmanager:GetSecretValue"],
-          Resource = local.api_key_is_arn ? [var.api_key] : [aws_secretsmanager_secret.coralogix_secret[each.key].arn]
-        },
-      ] : [],
-
-      # Destination on Failure Policy
-      var.notification_email != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sns:Publish"],
-          Resource = [aws_sns_topic.this[each.key].arn]
-        },
-      ] : [],
-
-      # Private Link Policy
-      var.subnet_ids != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DescribeVpcs", "ec2:DeleteNetworkInterface", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups"],
-          Resource = ["*"]
-        },
-      ] : [],
-
-      # SQS S3 Integration Policy
-      var.sqs_name != null && local.s3_bucket_names != toset([]) ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"],
-          Resource = [data.aws_sqs_queue.name[0].arn]
-        },
-        {
-          Effect   = "Allow",
-          Action   = ["s3:GetObject"],
-          Resource = flatten([for bucket in data.aws_s3_bucket.this : ["${bucket.arn}/*", "${bucket.arn}"]])
-        },
-      ] : [],
-
-      # SNS S3 Integration Policy
-      var.sns_topic_name != null && local.s3_bucket_names != toset([]) ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sns:Publish"],
-          Resource = [data.aws_sns_topic.sns_topic[0].arn]
-        },
-        {
-          Effect   = "Allow",
-          Action   = ["s3:GetObject"],
-          Resource = flatten([for bucket in data.aws_s3_bucket.this : ["${bucket.arn}/*", "${bucket.arn}"]])
-        },
-      ] : [],
-
-      # S3 Integration Policy
-      local.s3_bucket_names != toset([]) && var.sqs_name == null && var.sns_topic_name == null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["s3:GetObject"],
-          Resource = flatten([for bucket in data.aws_s3_bucket.this : ["${bucket.arn}/*", "${bucket.arn}"]])
-        },
-      ] : [],
-
-      # SQS Integration Policy
-      local.s3_bucket_names == toset([]) && var.sqs_name != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-          Resource = [data.aws_sqs_queue.name[0].arn]
-        },
-      ] : [],
-
-      # SNS Integration Policy
-      local.s3_bucket_names == toset([]) && var.sns_topic_name != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sns:Publish"]
-          Resource = [data.aws_sns_topic.sns_topic[0].arn]
-        },
-      ] : [],
-
-      # Kinesis Integration policy
-      var.kinesis_stream_name != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["kinesis:GetRecords", "kinesis:GetShardIterator", "kinesis:DescribeStream", "kinesis:ListStreams", "kinesis:ListShards", "kinesis:DescribeStreamSummary", "kinesis:SubscribeToShard"],
-          Resource = [data.aws_kinesis_stream.kinesis_stream[0].arn]
-        },
-      ] : [],
-
-      # Kafka Integration Policy
-      var.kafka_brokers != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DescribeVpcs", "ec2:DeleteNetworkInterface", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups"],
-          Resource = ["*"]
-        },
-      ] : [],
-
-      # DLQ Permissions
-      var.enable_dlq ? [
-        {
-          Effect   = "Allow",
-          Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"],
-          Resource = [aws_sqs_queue.DLQ[0].arn]
-        },
-        {
-          Effect   = "Allow",
-          Action   = ["s3:PutObject", "s3:PutObjectAcl", "s3:AbortMultipartUpload", "s3:DeleteObject", "s3:PutObjectTagging", "s3:PutObjectVersionTagging"]
-          Resource = ["${data.aws_s3_bucket.dlq_bucket[0].arn}/*", data.aws_s3_bucket.dlq_bucket[0].arn]
-        }
-      ] : [],
-
-      # EcrScan Integration Policy
-      var.integration_type == "EcrScan" ? [
-        {
-          Effect   = "Allow"
-          Action   = ["ecr:DescribeImageScanFindings"]
-          Resource = ["*"]
-        }
-      ] : [],
-
-      # S3 Bucket KMS Policy
-      var.s3_bucket_kms_arn != null ? [
-        {
-          Effect   = "Allow",
-          Action   = ["kms:Decrypt"],
-          Resource = [var.s3_bucket_kms_arn]
-        }
-      ] : []
-    )
-  })
-}
 
 resource "aws_iam_role" "lambda_role" {
   count = var.execution_role_name == null ? 1 : 0
@@ -211,13 +60,6 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-# Attach the policy to the existing role
-resource "aws_iam_role_policy_attachment" "attach_to_existing_role" {
-  for_each = var.integration_info != null ? var.integration_info : local.integration_info
-
-  role       = var.execution_role_name != null ? var.execution_role_name : aws_iam_role.lambda_role[0].name
-  policy_arn = aws_iam_policy.lambda_policy[each.key].arn
-}
 
 resource "aws_iam_role_policy_attachment" "attach_msk_policy" {
   count      = var.msk_cluster_arn != null ? 1 : 0
@@ -272,7 +114,7 @@ module "lambda" {
   create_current_version_allowed_triggers = false
   attach_policy_statements                = false
   create_role                             = false
-  lambda_role                             = var.execution_role_name != null ? data.aws_iam_role.LambdaExecutionRole[0].arn : aws_iam_role.lambda_role[0].arn
+  lambda_role                             = data.aws_iam_role.LambdaExecutionRole[0].arn
   allowed_triggers = local.s3_bucket_names != toset([]) && local.sns_enable != true ? {
     for bucket in data.aws_s3_bucket.this : "AllowExecutionFromS3_${bucket.bucket}" => {
       principal  = "s3.amazonaws.com"
