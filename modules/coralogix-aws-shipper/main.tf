@@ -186,9 +186,9 @@ resource "aws_secretsmanager_secret" "coralogix_secret" {
   name        = "lambda/coralogix/${data.aws_region.this.name}/coralogix-aws-shipper/coralogix-${random_string.this[each.key].result}"
   description = "Coralogix Send Your Data key Secret"
 
-  lifecycle {
-    create_before_destroy = true
-  }
+#  lifecycle {
+#    create_before_destroy = true
+#  }
 }
 
 resource "aws_secretsmanager_secret_version" "service_user" {
