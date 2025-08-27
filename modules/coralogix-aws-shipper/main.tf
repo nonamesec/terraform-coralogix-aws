@@ -107,7 +107,7 @@ module "lambda" {
     TELEMETRY_MODE     = var.telemetry_mode
   }
   s3_existing_package = {
-    bucket = var.custom_s3_bucket == "" ? "coralogix-serverless-repo-${data.aws_region.this.name}" : var.custom_s3_bucket
+    bucket = var.custom_s3_bucket == "" ? "coralogix-serverless-repo-${var.region}" : var.custom_s3_bucket
     key    = var.cpu_arch == "arm64" ? "coralogix-aws-shipper${var.source_code_version != "" ? "-${var.cpu_arch}-${var.source_code_version}" : ""}.zip" : "coralogix-aws-shipper-x86-64${var.source_code_version != "" ? "-${var.cpu_arch}-${var.source_code_version}" : ""}.zip"
   }
   cloudwatch_logs_retention_in_days       = each.value.lambda_log_retention
@@ -183,7 +183,7 @@ resource "aws_secretsmanager_secret" "coralogix_secret" {
     for key, integration_info in var.integration_info != null ? var.integration_info : local.integration_info : key => integration_info
     if !local.api_key_is_arn && (integration_info.store_api_key_in_secrets_manager == null || integration_info.store_api_key_in_secrets_manager == true)
   }
-  name        = "lambda/coralogix/${data.aws_region.this.name}/coralogix-aws-shipper/coralogix-${random_string.this[each.key].result}"
+  name        = "lambda/coralogix/${var.region}/coralogix-aws-shipper/coralogix-${random_string.this[each.key].result}"
   description = "Coralogix Send Your Data key Secret"
 
 #  lifecycle {
@@ -204,7 +204,7 @@ resource "aws_secretsmanager_secret_version" "service_user" {
 resource "aws_vpc_endpoint" "secretsmanager" {
   count               = (var.store_api_key_in_secrets_manager || local.api_key_is_arn) && var.subnet_ids != null && var.create_endpoint ? 1 : 0
   vpc_id              = data.aws_subnet.subnet[0].vpc_id
-  service_name        = "com.amazonaws.${data.aws_region.this.name}.secretsmanager"
+  service_name        = "com.amazonaws.${var.region}.secretsmanager"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = var.subnet_ids
   security_group_ids  = var.security_group_ids
