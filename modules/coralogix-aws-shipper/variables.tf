@@ -398,3 +398,10 @@ variable "include_metric_stream_filter" {
   )
   default = []
 }
+
+
+variable "region" {
+  description = "The AWS region to deploy the resources in. If not set, the provider region will be used."
+  type        = string
+  default     = null
+}
